@@ -93,7 +93,6 @@ python web_ui/app.py
 6. 项目结构说明:
    - main.py: 主入口，整合爬虫和Web服务
    - qdii_spider.py: 主爬虫逻辑
-   - qdii_filter_and_save.py: 数据处理逻辑
    - web_ui/app.py: Web服务逻辑
    - web_ui/templates/index.html: 前端模板
    - web_ui/config.db: SQLite数据库配置
