@@ -15,7 +15,7 @@
 
 ### 1. 克隆项目
 ```bash
-git clone https://github.com/yourname/jisilu-qdii-scraper
+git clone https://github.com/mma2425156/jusilu-QDII
 cd jisilu
 ```
 
