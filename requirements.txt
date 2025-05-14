@@ -1,0 +1,12 @@
+setuptools>=68.0.0
+Flask==2.0.1
+Flask-SQLAlchemy==2.5.1
+requests==2.31.0
+pandas==2.2.2
+playwright==1.40.0
+lxml==4.9.3
+beautifulsoup4==4.12.2
+numpy==1.26.4
+schedule==1.2.0
+PyQt5==5.15.10
+PyQt5-sip==12.13.0
