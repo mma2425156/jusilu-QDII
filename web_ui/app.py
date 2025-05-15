@@ -1,4 +1,4 @@
-from flask import render_template, request, jsonify
+from flask import render_template, request, jsonify, Response
 import sqlite3
 import json
 import os
@@ -129,7 +129,7 @@ def index():
             
         qdii_data = filtered.to_dict('records')
         
-        return render_template('index.html', 
+        return render_template('index_new.html', 
                               qdii_data=qdii_data, 
                               premium_min=premium_min, 
                               status_filter=status_filter,
@@ -385,6 +385,68 @@ def refresh_data():
     except Exception as e:
         app.logger.error(f'Error in refresh_data route: {str(e)}')
         return jsonify({'status': 'error', 'message': str(e)}), 500
+
+@app.route('/refresh-status')
+def refresh_status():
+    """提供实时刷新状态的SSE端点"""
+    def generate():
+        try:
+            yield "data: " + json.dumps({"status": "processing", "message": "正在准备爬取数据..."}) + "\n\n"
+            time.sleep(0.5)
+            
+            # 检查刷新冷却时间
+            global last_refresh_time
+            current_time = time.time()
+            if current_time - last_refresh_time < 30:
+                cooldown_time = int(30 - (current_time - last_refresh_time))
+                yield "data: " + json.dumps({
+                    "status": "error", 
+                    "message": f"刷新太频繁，请等待{cooldown_time}秒后再试"
+                }) + "\n\n"
+                return
+            
+            yield "data: " + json.dumps({"status": "processing", "message": "正在启动爬虫..."}) + "\n\n"
+            time.sleep(0.5)
+            
+            # 使用虚拟环境的Python运行爬虫脚本
+            process = subprocess.Popen(
+                [os.path.join('e:/Trae/jisilu', 'venv', 'Scripts', 'python.exe'), 
+                 'e:/Trae/jisilu/qdii_spider.py'],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                bufsize=1
+            )
+            
+            # 更新刷新时间
+            last_refresh_time = time.time()
+            
+            # 读取标准输出并实时发送
+            while True:
+                line = process.stdout.readline()
+                if not line and process.poll() is not None:
+                    break
+                if line:
+                    yield "data: " + json.dumps({"status": "processing", "message": line.strip()}) + "\n\n"
+            
+            # 检查进程退出状态
+            if process.returncode == 0:
+                yield "data: " + json.dumps({
+                    "status": "completed", 
+                    "message": "数据刷新成功！将在几秒后刷新页面..."
+                }) + "\n\n"
+            else:
+                error = process.stderr.read().strip()
+                yield "data: " + json.dumps({
+                    "status": "error", 
+                    "message": f"爬虫执行失败: {error}"
+                }) + "\n\n"
+                
+        except Exception as e:
+            app.logger.error(f'刷新状态更新错误: {str(e)}')
+            yield "data: " + json.dumps({"status": "error", "message": str(e)}) + "\n\n"
+    
+    return Response(generate(), mimetype="text/event-stream")
 
 if __name__ == '__main__':
     import os

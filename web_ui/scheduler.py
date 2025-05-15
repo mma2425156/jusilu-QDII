@@ -20,6 +20,7 @@ class TaskScheduler:
         """初始化调度器并加载数据库中的任务"""
         with app.app_context():
             conn = sqlite3.connect(current_app.config['DATABASE'])
+            conn.row_factory = sqlite3.Row  # 添加这一行，确保返回字典而不是元组
             try:
                 cursor = conn.cursor()
                 cursor.execute("SELECT * FROM task_schedule WHERE is_active = 1")

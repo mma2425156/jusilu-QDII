@@ -4,7 +4,7 @@ Flask-SQLAlchemy==2.5.1
 requests==2.31.0
 pandas==2.2.2
 playwright==1.40.0
-greenlet==3.0.3
+greenlet==3.0.1
 lxml==4.9.3
 beautifulsoup4==4.12.2
 numpy==1.26.4

@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>集思录QDII数据助手</title>
+    <!-- 基础样式 -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- 谷歌字体 -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome 图标 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- 自定义样式 -->
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="page-container">
+        <!-- 页面头部 -->
+        <header class="app-header">
+            <div class="app-title">
+                <div class="theme-icon">
+                    <i class="fas fa-chart-line fa-2x text-primary"></i>
+                </div>
+                <div>
+                    <h1>集思录QDII数据助手</h1>
+                    <div class="app-subtitle">数据更新时间: {{ update_time }}</div>
+                </div>
+            </div>
+            <div class="actions">
+                <div class="theme-switch">
+                    <input type="checkbox" id="themeSwitch">
+                    <span class="theme-slider"></span>
+                    <span class="theme-switch-label">暗黑模式</span>
+                </div>
+                <button id="mailConfigBtn" class="btn btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#mailConfigModal">
+                    <i class="fas fa-envelope me-1"></i> 邮件设置
+                </button>
+                <button id="refreshBtn" class="btn btn-primary">
+                    <span id="refreshText">刷新数据</span>
+                    <span id="refreshSpinner" class="spinner-border spinner-border-sm d-none" role="status"></span>
+                </button>
+            </div>
+        </header>
+        
+        <!-- 刷新状态提示区 -->
+        <div id="refreshStatus" class="alert alert-info d-none mb-4">
+            <div id="statusMessage"></div>
+            <pre id="statusOutput" class="mt-2 mb-0 small" style="white-space: pre-wrap;"></pre>
+        </div>
+        
+        <!-- 筛选表单 -->
+        <div class="card filter-card">
+            <div class="card-header">
+                <i class="fas fa-filter me-2"></i> 数据筛选
+            </div>
+            <div class="card-body">
+                <form id="filterForm" method="POST" class="filter-form">
+                    <div class="mb-3">
+                        <label for="premium_min" class="form-label">T-1溢价率 ≥</label>
+                        <input type="number" step="0.01" class="form-control" id="premium_min" name="premium_min" value="{{ premium_min }}">
+                    </div>
+                    <div class="mb-3">
+                        <label for="status_filter" class="form-label">申购状态</label>
+                        <select class="form-select" id="status_filter" name="status_filter">
+                            <option value="all" {% if status_filter == 'all' %}selected{% endif %}>全部</option>
+                            <option value="open" {% if status_filter == 'open' %}selected{% endif %}>开放申购</option>
+                            <option value="closed" {% if status_filter == 'closed' %}selected{% endif %}>暂停申购</option>
+                            <option value="limited" {% if status_filter == 'limited' %}selected{% endif %}>限量申购</option>
+                        </select>
+                    </div>
+                    <div class="filter-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-search me-1"></i> 筛选
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- 数据表格 -->
+        <div class="card">
+            <div class="card-header">
+                <i class="fas fa-table me-2"></i> 筛选结果
+            </div>
+            <div class="table-container">
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>来源</th>
+                            <th>代码</th>
+                            <th>名称</th>
+                            <th>T-1溢价率</th>
+                            <th>申购状态</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTableBody">
+                        {% for item in qdii_data %}
+                        <tr>
+                            <td>{{ item.来源 }}</td>
+                            <td>{{ item.代码 }}</td>
+                            <td>{{ item.名称 }}</td>
+                            <td>{{ item['T-1溢价率'] }}</td>
+                            <td>
+                                <span class="badge {% if item.申购状态 == '开放申购' %}badge-success
+                                              {% elif item.申购状态 == '限量申购' %}badge-warning
+                                              {% elif item.申购状态 == '暂停申购' %}badge-danger
+                                              {% else %}badge-secondary{% endif %}">
+                                    {{ item.申购状态 }}
+                                </span>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 邮件设置模态框 -->
+    <div class="modal fade" id="mailConfigModal" tabindex="-1" aria-labelledby="mailConfigModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="mailConfigModalLabel">
+                        <i class="fas fa-envelope me-2"></i> 邮件服务器配置
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="mailConfigForm">
+                        <!-- 表单内容将通过JavaScript动态加载 -->
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" id="saveMailConfig">保存配置</button>
+                    <button type="button" class="btn btn-outline-primary" id="testMailConfig">测试配置</button>
+                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#taskConfigModal" 
+                        onclick="$('#mailConfigModal').modal('hide')">
+                        配置定时任务
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 定时任务配置模态框 -->
+    <div class="modal fade" id="taskConfigModal" tabindex="-1" aria-labelledby="taskConfigModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="taskConfigModalLabel">
+                        <i class="fas fa-clock me-2"></i> 定时任务配置
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 任务配置表单 -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-cog me-2"></i> 任务配置
+                                </h6>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <form id="taskConfigForm">
+                                <!-- 表单内容将通过JavaScript动态加载 -->
+                            </form>
+                            <div class="d-flex justify-content-end mt-3">
+                                <button type="button" class="btn btn-outline-primary me-2" id="testTaskConfig">
+                                    <i class="fas fa-vial me-1"></i> 测试配置
+                                </button>
+                                <button type="button" class="btn btn-primary" id="saveTaskConfig">
+                                    <i class="fas fa-save me-1"></i> 保存任务
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- 任务列表 -->
+                    <div class="card">
+                        <div class="card-header bg-light">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="fas fa-list me-2"></i> 已保存的任务
+                                </h6>
+                                <span class="badge badge-primary" id="taskCount">0</span>
+                            </div>
+                        </div>
+                        <div class="card-body p-0" style="max-height: 350px; overflow-y: auto;">
+                            <table class="table table-hover m-0" id="taskTable">
+                                <thead>
+                                    <tr class="table-light">
+                                        <th>执行时间</th>
+                                        <th>收件人</th>
+                                        <th>筛选条件</th>
+                                        <th>状态</th>
+                                        <th>操作</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- 任务列表将通过JavaScript动态加载 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary me-auto" onclick="app.hideModal(document.getElementById('taskConfigModal')); app.showModal(document.getElementById('mailConfigModal'))">
+                        <i class="fas fa-arrow-left me-1"></i> 返回邮件配置
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 日志模态框 -->
+    <div class="modal fade" id="logModal" tabindex="-1" role="dialog">
+        <div class="modal-dialog modal-lg" role="document">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title">
+                        <i class="fas fa-history me-2"></i> 任务执行日志
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="logContent">
+                    <!-- 日志内容将通过JavaScript动态加载 -->
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript依赖 -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- 自定义JavaScript -->
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/tasks.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/data.js') }}"></script>
+    
+    <!-- 初始化脚本 -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // 绑定邮件相关按钮事件
+            document.getElementById('saveMailConfig').addEventListener('click', EmailModule.saveMailConfig);
+            document.getElementById('testMailConfig').addEventListener('click', EmailModule.testMailConfig);
+            
+            // 绑定任务相关按钮事件
+            document.getElementById('saveTaskConfig').addEventListener('click', TaskModule.saveTask);
+            document.getElementById('testTaskConfig').addEventListener('click', TaskModule.testTask);
+            
+            // 初始化任务列表
+            TaskModule.loadTasks();
+            
+            // 模态框初始化
+            document.getElementById('mailConfigModal').addEventListener('show.bs.modal', EmailModule.loadMailConfig);
+            document.getElementById('taskConfigModal').addEventListener('show.bs.modal', TaskModule.resetTaskForm);
+        });
+    </script>
+</body>
+</html> 

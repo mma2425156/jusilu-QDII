@@ -1,30 +1,28 @@
 from flask import Flask
-from dotenv import load_dotenv
 import os
 
-def create_app():
-    # 加载环境变量
-    load_dotenv()
+def create_app(test_config=None):
+    """创建并配置Flask应用"""
+    app = Flask(__name__, 
+                template_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web_ui', 'templates'),
+                static_folder=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web_ui', 'static'))
     
-    app = Flask(__name__)
-    # 确保instance目录存在
-    instance_path = os.path.join(os.path.dirname(__file__), 'instance')
-    if not os.path.exists(instance_path):
-        os.makedirs(instance_path)
-    app.config['DATABASE'] = os.path.join(instance_path, 'app.db')
-    app.config['JWT_SECRET'] = os.getenv('JWT_SECRET', 'your-secret-key')
-    
-    # 配置日志
-    if not app.debug:
-        import logging
-        from logging.handlers import RotatingFileHandler
-        os.makedirs('web_ui/logs', exist_ok=True)
-        file_handler = RotatingFileHandler('web_ui/logs/app.log', maxBytes=10240, backupCount=10)
-        file_handler.setFormatter(logging.Formatter(
-            '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'))
-        file_handler.setLevel(logging.INFO)
-        app.logger.addHandler(file_handler)
-        app.logger.setLevel(logging.INFO)
-        app.logger.info('Application startup')
-    
+    app.config.from_mapping(
+        SECRET_KEY='dev',
+        DATABASE=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance', 'qdii.sqlite'),
+        MAIL_CONFIG_PATH=os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config', 'mail_config.json'),
+    )
+
+    # 确保instance文件夹存在
+    try:
+        os.makedirs(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'instance'))
+    except OSError:
+        pass
+        
+    # 确保config文件夹存在
+    try:
+        os.makedirs(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config'))
+    except OSError:
+        pass
+
     return app
