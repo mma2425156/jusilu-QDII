@@ -29,36 +29,36 @@ def get_db():
     
     # 初始化数据库表
     with conn:
-            conn.executescript('''
-            CREATE TABLE IF NOT EXISTS task_schedule (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                cron_expression TEXT NOT NULL,
-                is_active BOOLEAN DEFAULT 1,
-                last_run TIMESTAMP,
-                next_run TIMESTAMP,
-                recipients TEXT NOT NULL,
-                conditions TEXT NOT NULL,
-                last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            );
-            
-            CREATE TABLE IF NOT EXISTS user_settings (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                user_id TEXT NOT NULL,
-                email_notifications BOOLEAN DEFAULT 1,
-                notification_threshold REAL DEFAULT 0.05,
-                last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(user_id)
-            );
-            
-            CREATE TABLE IF NOT EXISTS task_logs (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                task_id INTEGER NOT NULL,
-                run_time TIMESTAMP NOT NULL,
-                filtered_count INTEGER NOT NULL,
-                status TEXT NOT NULL,
-                FOREIGN KEY(task_id) REFERENCES task_schedule(id)
-            );
-        ''')
+        conn.executescript('''
+        CREATE TABLE IF NOT EXISTS task_schedule (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            cron_expression TEXT NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            last_run TIMESTAMP,
+            next_run TIMESTAMP,
+            recipients TEXT NOT NULL,
+            conditions TEXT NOT NULL,
+            last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        
+        CREATE TABLE IF NOT EXISTS user_settings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            email_notifications BOOLEAN DEFAULT 1,
+            notification_threshold REAL DEFAULT 0.05,
+            last_modified TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(user_id)
+        );
+        
+        CREATE TABLE IF NOT EXISTS task_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            run_time TIMESTAMP NOT NULL,
+            filtered_count INTEGER NOT NULL,
+            status TEXT NOT NULL,
+            FOREIGN KEY(task_id) REFERENCES task_schedule(id)
+        );
+    ''')
     return conn
 
 # 初始化数据库连接
@@ -117,15 +117,15 @@ def index():
         
         # 读取根目录下的最新数据并根据条件筛选
         df = pd.read_csv('e:/Trae/jisilu/qdii_all_clean.csv')
+        # 初始化filtered为完整数据集
+        filtered = df[df['T-1溢价率'] >= premium_min]
         # 根据申购状态筛选
-        if status_filter == 'all':
-            filtered = df[df['T-1溢价率'] >= premium_min]
-        elif status_filter == 'limited':
-            filtered = df[(df['T-1溢价率'] >= premium_min) & (df['申购状态'].str.contains('限'))]
+        if status_filter == 'limited':
+            filtered = filtered[filtered['申购状态'].str.contains('限')]
         elif status_filter == 'open':
-            filtered = df[(df['T-1溢价率'] >= premium_min) & (df['申购状态'].str.contains('开放'))]
+            filtered = filtered[filtered['申购状态'].str.contains('开放')]
         elif status_filter == 'closed':
-            filtered = df[(df['T-1溢价率'] >= premium_min) & (df['申购状态'].str.contains('暂停'))]
+            filtered = filtered[filtered['申购状态'].str.contains('暂停')]
             
         qdii_data = filtered.to_dict('records')
         

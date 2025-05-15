@@ -1,7 +1,14 @@
 @echo off
-REM 自动安装依赖脚本(Windows版)
+REM 自动安装依赖脚本(Windows版) - 支持虚拟环境
 
-set PYTHON=python
+:: 优先使用虚拟环境中的Python
+if exist "..\venv\Scripts\python.exe" (
+    set PYTHON=..\venv\Scripts\python
+) else (
+    set PYTHON=python
+    echo 警告: 未检测到虚拟环境，将使用系统Python
+)
+
 set MAX_RETRIES=3
 set RETRY_DELAY=5
 
