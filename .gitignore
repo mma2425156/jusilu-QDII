@@ -1,15 +1,83 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# 环境文件
+.env
+.env.local
+
+# 数据文件
+qdii_tables/
+*.csv
+*.db
+*.sqlite
+
+# 日志
+logs/
+*.log
+
+# 测试
+.coverage
+htmlcov/
+.pytest_cache/
+
+# 其他
+.DS_Store
+Thumbs.db
 # Virtual Environment
 venv/
 venv*
+# Environment variables
+.env
+*.env
+.env.local
+.env.development
+.env.test
+.env.production
 
+# Virtual environment
+venv/
+ENV/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
 # Python cache
 __pycache__/
 *.py[cod]
 *$py.class
 
-# Environment variables
-.env
-.env.*
 
 # IDE specific
 .vscode/

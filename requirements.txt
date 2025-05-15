@@ -4,9 +4,16 @@ Flask-SQLAlchemy==2.5.1
 requests==2.31.0
 pandas==2.2.2
 playwright==1.40.0
+greenlet==3.0.3
 lxml==4.9.3
 beautifulsoup4==4.12.2
 numpy==1.26.4
 schedule==1.2.0
 PyQt5==5.15.10
 PyQt5-sip==12.13.0
+Werkzeug==2.0.3
+python-dotenv==1.0.0
+apscheduler==3.10.0
+flask-cors==4.0.0
+pyjwt==2.8.0
+gunicorn==21.2.0
