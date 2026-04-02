@@ -32,8 +32,8 @@
                     <span class="theme-slider"></span>
                     <span class="theme-switch-label">暗黑模式</span>
                 </div>
-                <button id="mailConfigBtn" class="btn btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#mailConfigModal">
-                    <i class="fas fa-envelope me-1"></i> 邮件设置
+                <button id="settingsBtn" class="btn btn-outline-secondary me-2" data-bs-toggle="modal" data-bs-target="#channelConfigModal">
+                    <i class="fas fa-bell me-1"></i> 通知设置
                 </button>
                 <button id="refreshBtn" class="btn btn-primary">
                     <span id="refreshText">刷新数据</span>
@@ -86,26 +86,41 @@
                 <table class="table table-striped">
                     <thead>
                         <tr>
-                            <th>来源</th>
+                            <th>市场</th>
                             <th>代码</th>
                             <th>名称</th>
                             <th>T-1溢价率</th>
+                            <th>变化</th>
                             <th>申购状态</th>
                         </tr>
                     </thead>
                     <tbody id="dataTableBody">
                         {% for item in qdii_data %}
                         <tr>
-                            <td>{{ item.来源 }}</td>
-                            <td>{{ item.代码 }}</td>
-                            <td>{{ item.名称 }}</td>
-                            <td>{{ item['T-1溢价率'] }}</td>
+                            <td>{{ item.source or item.来源 or '' }}</td>
+                            <td>{{ item.code or item.代码 }}</td>
+                            <td>{{ item.name or item.名称 }}</td>
                             <td>
-                                <span class="badge {% if item.申购状态 == '开放申购' %}badge-success
-                                              {% elif item.申购状态 == '限量申购' %}badge-warning
-                                              {% elif item.申购状态 == '暂停申购' %}badge-danger
-                                              {% else %}badge-secondary{% endif %}">
-                                    {{ item.申购状态 }}
+                                {% if item.premium_today is not none %}
+                                <span class="fw-bold {% if item.premium_today >= 5 %}text-danger{% elif item.premium_today >= 3 %}text-warning{% else %}text-success{% endif %}">
+                                    {{ "%.2f"|format(item.premium_today) }}%
+                                </span>
+                                {% else %}
+                                <span class="text-muted">N/A</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if item.change is not none %}
+                                <span class="{% if item.change > 0 %}text-danger{% elif item.change < 0 %}text-success{% else %}text-muted{% endif %} fw-bold">
+                                    {% if item.change > 0 %}↑{% elif item.change < 0 %}↓{% endif %}{{ "%.2f"|format(item.change) }}%
+                                </span>
+                                {% else %}
+                                <span class="text-muted">-</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <span class="badge {% if item.status == '开放申购' %}bg-success{% elif item.status == '限量申购' %}bg-warning text-dark{% elif item.status == '暂停申购' %}bg-danger{% else %}bg-secondary{% endif %}">
+                                    {{ item.status or item.申购状态 }}
                                 </span>
                             </td>
                         </tr>
@@ -135,8 +150,7 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
                     <button type="button" class="btn btn-primary" id="saveMailConfig">保存配置</button>
                     <button type="button" class="btn btn-outline-primary" id="testMailConfig">测试配置</button>
-                    <button type="button" class="btn btn-success" data-bs-toggle="modal" data-bs-target="#taskConfigModal" 
-                        onclick="$('#mailConfigModal').modal('hide')">
+                    <button type="button" class="btn btn-success" id="goToTaskConfig">
                         配置定时任务
                     </button>
                 </div>
@@ -237,6 +251,37 @@
         </div>
     </div>
 
+    <!-- 通知渠道配置模态框 -->
+    <div class="modal fade" id="channelConfigModal" tabindex="-1">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="channelConfigModalLabel">
+                        <i class="fas fa-bell me-2"></i> 通知渠道配置
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- 渠道列表 -->
+                    <div id="channelList" class="mb-3">
+                        <div class="text-center py-3 text-muted">加载中...</div>
+                    </div>
+                    <!-- 配置表单 -->
+                    <div id="channelFormContainer"></div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-outline-primary" id="testChannelBtn">
+                        <i class="fas fa-paper-plane me-1"></i> 测试
+                    </button>
+                    <button type="button" class="btn btn-primary" id="saveChannelBtn">
+                        <i class="fas fa-save me-1"></i> 保存配置
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- JavaScript依赖 -->
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -244,6 +289,7 @@
     <!-- 自定义JavaScript -->
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     <script src="{{ url_for('static', filename='js/api.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/notify.js') }}"></script>
     <script src="{{ url_for('static', filename='js/tasks.js') }}"></script>
     <script src="{{ url_for('static', filename='js/data.js') }}"></script>
     

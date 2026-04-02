@@ -149,10 +149,26 @@ const API = (function() {
     },
     
     /**
-     * 加载指定任务
+     * 加载指定任务（编辑时获取详情）
      */
     loadTask: function(taskId) {
       return fetch(`/api/tasks?id=${taskId}`)
+        .then(response => {
+          if (!response.ok) {
+            const error = new Error('加载任务失败');
+            error.status = response.status;
+            throw error;
+          }
+          return response.json();
+        })
+        .catch(handleApiError);
+    },
+
+    /**
+     * 获取任务详情（重构后 RESTful 端点）
+     */
+    getTask: function(taskId) {
+      return fetch(`/api/tasks/${taskId}`)
         .then(response => {
           if (!response.ok) {
             const error = new Error('加载任务失败');

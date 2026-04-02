@@ -1,0 +1,157 @@
+{
+  "project": "QDII基金监控系统",
+  "description": "基于Flask + Playwright + SQLAlchemy的QDII基金溢价率监控系统，支持多渠道推送通知（钉钉/飞书/企微/TG/PushPlus等10种渠道），提供WebUI界面供非技术用户配置。",
+  "features": [
+    {
+      "id": "verify-01",
+      "category": "foundation",
+      "priority": 1,
+      "description": "依赖安装验证：安装 requirements.txt + playwright chromium",
+      "file": "requirements.txt",
+      "steps": [
+        "检查 Python 版本（需 3.8+）",
+        "运行 pip install -r requirements.txt",
+        "运行 playwright install chromium",
+        "复制 config/.env.example 为 config/.env",
+        "运行 python main.py --crawl 验证爬虫是否正常抓取数据"
+      ],
+      "passes": true,
+      "verification": "python main.py --crawl 成功抓取到 43 条数据（3个标签页合计），parser 正确过滤登录占位符"
+    },
+    {
+      "id": "verify-02",
+      "category": "foundation",
+      "priority": 2,
+      "description": "Web服务启动验证：启动 Flask 服务并访问主页",
+      "file": "main.py",
+      "steps": [
+        "运行 python main.py（不加参数）",
+        "浏览器访问 http://127.0.0.1:8866",
+        "确认页面正常加载，显示基金数据表格",
+        "确认 SSE 刷新功能可用（点击刷新按钮）"
+      ],
+      "passes": true,
+      "verification": "curl http://127.0.0.1:8866/ 返回 HTML 页面，Flask 监听在 http://0.0.0.0:8866"
+    },
+    {
+      "id": "verify-03",
+      "category": "foundation",
+      "priority": 3,
+      "description": "数据库初始化验证：确认 SQLite 数据库和所有表创建成功",
+      "file": "apps/app_factory.py",
+      "steps": [
+        "启动一次 Flask 应用（触发 db.create_all）",
+        "检查数据库文件 instance/app.db 是否存在",
+        "使用 sqlite3 验证所有表已创建：fund_snapshots, task_schedule, task_logs, notify_channels, notify_templates"
+      ],
+      "passes": true,
+      "verification": "Flask 启动日志显示 'Scheduler initialized successfully'，instance/app.db 包含6张表"
+    },
+    {
+      "id": "verify-04",
+      "category": "foundation",
+      "priority": 4,
+      "description": "快照对比功能验证：验证今日 vs 昨日溢价率变化对比",
+      "file": "apps/api/routes.py",
+      "steps": [
+        "运行 python main.py --snapshot 两次（间隔1分钟），第二次确认有今日数据",
+        "访问 GET /api/history/today API",
+        "确认返回数据中包含变化指示列（premium_change）"
+      ],
+      "passes": false,
+      "verification": "API 返回数据有今日和昨日的对比，且变化值正确（正数=溢价上升，负数=溢价下降）"
+    },
+    {
+      "id": "impl-01",
+      "category": "components",
+      "priority": 5,
+      "description": "WebUI通知模板管理界面：用户可在网页上增删改查通知模板",
+      "file": "web_ui/static/js/notify.js",
+      "steps": [
+        "在 notify.js 中添加 loadTemplates()、renderTemplateList()、openTemplateForm()、saveTemplate() 函数",
+        "在 notify.js 中定义 TEMPLATE_FIELDS（title_template, content_template，支持变量：{{date}}, {{count}}, {{table}}, {{funds}}）",
+        "在 index_new.html 添加「通知模板」按钮和对应的 modal",
+        "API: GET/POST /api/notify/templates（已有），添加 PUT/DELETE 支持"
+      ],
+      "passes": false,
+      "verification": "在 WebUI 中可以创建模板、编辑模板、删除模板，且保存后 API 返回正确数据"
+    },
+    {
+      "id": "impl-02",
+      "category": "components",
+      "priority": 6,
+      "description": "WebUI历史数据查看器：查看历史快照数据并回放溢价率变化",
+      "file": "web_ui/static/js/history.js",
+      "steps": [
+        "创建 web_ui/static/js/history.js",
+        "添加历史数据查看功能：选择日期范围、查看当日数据",
+        "添加溢价率趋势图（可用简单 Canvas 或纯表格对比）",
+        "在 index_new.html 添加「历史数据」入口按钮"
+      ],
+      "passes": false,
+      "verification": "可以在 WebUI 中选择历史日期查看当日基金快照数据"
+    },
+    {
+      "id": "impl-03",
+      "category": "components",
+      "priority": 7,
+      "description": "WebUI日志查看器：查看定时任务的执行日志",
+      "file": "web_ui/static/js/logs.js",
+      "steps": [
+        "创建 web_ui/static/js/logs.js",
+        "添加 loadTaskLogs(taskId) 函数获取任务日志",
+        "添加日志列表渲染（时间、状态、命中数）",
+        "在 tasks.js 的任务详情弹窗中添加「查看日志」标签页"
+      ],
+      "passes": false,
+      "verification": "在任务详情弹窗中点击日志标签可以看到该任务的执行历史"
+    },
+    {
+      "id": "impl-04",
+      "category": "foundation",
+      "priority": 8,
+      "description": "旧文件清理：删除或归档 web_ui/ 下已废弃的旧文件",
+      "file": "web_ui/",
+      "steps": [
+        "识别已废弃文件：app.py（旧版Flask入口）, scheduler.py（硬编码路径）, mail_service.py（旧版邮件）, factory.py（旧版工厂）",
+        "将这些文件移动到 scripts/archive/ 或 web_ui/old/ 目录",
+        "确保新架构（main.py + apps/app_factory.py）完全替代旧文件",
+        "更新 .gitignore 确保旧文件不影响新架构"
+      ],
+      "passes": false,
+      "verification": "项目只通过 main.py 启动，旧文件不再被引用"
+    },
+    {
+      "id": "impl-05",
+      "category": "foundation",
+      "priority": 9,
+      "description": "Docker部署验证：确保 docker-compose up 能正常启动所有服务",
+      "file": "docker-compose.yml",
+      "steps": [
+        "运行 docker-compose build 验证 Dockerfile",
+        "运行 docker-compose up -d 启动服务",
+        "验证容器内 python main.py 可以正常运行",
+        "确认 Playwright chromium 在容器内可用",
+        "验证外部可访问 WebUI（检查端口映射）"
+      ],
+      "passes": false,
+      "verification": "docker-compose up -d 成功，服务启动后 WebUI 可访问，爬虫可在容器内运行"
+    },
+    {
+      "id": "impl-06",
+      "category": "foundation",
+      "priority": 10,
+      "description": "README文档更新：补充完整的使用说明和快速开始指南",
+      "file": "README.md",
+      "steps": [
+        "补充技术架构说明（Flask + Playwright + SQLAlchemy + APScheduler）",
+        "补充快速开始步骤（pip install → playwright install → copy .env → python main.py）",
+        "补充 WebUI 使用指南（配置邮件/通知渠道/创建定时任务）",
+        "补充 API 接口文档（Swagger 或 Markdown 格式）",
+        "补充各通知渠道配置说明（参考 DEPLOY.md）"
+      ],
+      "passes": false,
+      "verification": "README.md 包含完整的功能描述、安装步骤、使用说明"
+    }
+  ]
+}

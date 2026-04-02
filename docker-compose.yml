@@ -7,23 +7,16 @@ services:
       - "8866:8866"
     environment:
       - FLASK_ENV=production
-      - JWT_SECRET=${JWT_SECRET}
-      - SMTP_SERVER=${SMTP_SERVER}
-      - SMTP_PORT=${SMTP_PORT}
-      - SMTP_USERNAME=${SMTP_USERNAME}
-      - SMTP_PASSWORD=${SMTP_PASSWORD}
-    depends_on:
-      - redis
+      - FLASK_DEBUG=false
+      - SMTP_SERVER=${SMTP_SERVER:-}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USERNAME=${SMTP_USERNAME:-}
+      - SMTP_PASSWORD=${SMTP_PASSWORD:-}
+      - SECRET_KEY=${SECRET_KEY:-change-this-in-production}
     volumes:
-      - ./web_ui/config.db:/app/web_ui/config.db
+      - ./instance:/app/instance
       - ./qdii_tables:/app/qdii_tables
+      - ./logs:/app/logs
+    restart: unless-stopped
 
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-
-volumes:
-  redis_data:
+  # 注意：Redis 已移除（当前架构不需要，如需后台任务队列可重新启用）

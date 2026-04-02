@@ -1,19 +1,32 @@
-setuptools>=68.0.0
-Flask==2.0.1
-Flask-SQLAlchemy==2.5.1
-requests==2.31.0
-pandas==2.2.2
-playwright==1.40.0
-greenlet==3.0.1
-lxml==4.9.3
-beautifulsoup4==4.12.2
-numpy==1.26.4
-schedule==1.2.0
-PyQt5==5.15.10
-PyQt5-sip==12.13.0
-Werkzeug==2.0.3
-python-dotenv==1.0.0
-apscheduler==3.10.0
-flask-cors==4.0.0
-pyjwt==2.8.0
-gunicorn==21.2.0
+# QDII 基金监控系统 - 依赖列表
+# 安装: pip install -r requirements.txt
+
+# Web 框架（使用 3.x 支持 Python 3.14）
+Flask>=3.0.0
+Flask-SQLAlchemy>=3.1.0
+Flask-WTF>=1.2.0
+flask-cors>=4.0.0
+
+# 任务调度
+apscheduler>=3.10.0
+
+# 数据处理
+pandas>=2.2.0
+numpy>=2.0.0
+
+# 网页抓取
+playwright>=1.40.0
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+requests>=2.31.0
+
+# 环境变量
+python-dotenv>=1.0.0
+
+# 生产服务器
+gunicorn>=21.0.0
+
+# 其他
+pyjwt>=2.8.0
+greenlet>=3.0.0
+email-validator>=2.0.0

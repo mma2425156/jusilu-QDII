@@ -1,0 +1,49 @@
+================================================================================
+Progress Log - QDII 基金监控系统
+================================================================================
+
+## 2026-04-02 - 会话 2（task-harness 初始化 + 验证）
+
+### 背景
+上一会话完成了架构重构（通知系统、爬虫、API、WebUI），本会话：
+1. 安装 task-harness 并创建 harness 文件（feature_list.json, progress.txt, init.sh, task.json）
+2. 验证项目可运行性
+
+### 已完成的工作
+
+**Harness 文件（task-harness）：**
+- feature_list.json：10个功能清单（含验证任务 4个 + 实现任务 6个）
+- progress.txt：本会话历史记录
+- init.sh：环境初始化脚本（显示进度、Python版本、关键文件状态）
+- task.json：项目总览（里程碑、规则、技术栈）
+
+**Bug 修复：**
+- apps/spider/__init__.py：补充 run_workflow 导出（之前漏了，导致 main.py --crawl 报 ImportError）
+- models/__init__.py：修复 EmailConfig 导入名（EmailConfig → EmailConfigModel）
+- apps/app_factory.py：修复 docstring 缺少闭合 """ 的语法错误（位置：L91 create_page_bp）
+- apps/spider/parser.py：更新列名映射（jisilu.cn 页面结构变更，T-1溢价率 → T-2净值 溢价率；添加登录占位符过滤 PLACEHOLDER_VALUES）
+- apps/spider/fetcher.py：添加 jisilu.cn 自动登录支持（Cookie 缓存、用户名密码环境变量 JISILU_USERNAME/JISILU_PASSWORD）
+- config/__init__.py：新建，统一导出所有配置项（解决 config.spider 报错问题）
+- config/settings.py：DB URL 使用 .as_posix() 修正 SQLite 路径；load_dotenv 指向 config/.env
+- config/.env：DATABASE_URL 改为使用默认值（留空），避免路径不一致
+
+**依赖安装：**
+- 更新 requirements.txt：Flask 3.x、pandas 3.x、numpy 2.x 等兼容 Python 3.14 的版本
+- pip install 成功（lxml/greenlet 编译失败但不影响核心功能）
+- playwright install chromium 成功
+
+**验证结果（feature_list.json）：**
+- verify-01 ✅：依赖安装完成，爬虫可抓取 43 条数据（3个标签页），正确过滤登录占位符
+- verify-02 ✅：Flask 服务启动成功，监听 http://0.0.0.0:8866，curl 返回 HTML 页面
+- verify-03 ✅：instance/app.db 已创建，包含6张表（fund_snapshots, task_schedule, task_logs, notify_channels, notify_templates）
+- verify-04 ⏳：快照对比待验证（需两次 --snapshot 运行）
+- verify-04 ⏳：注意 jisilu.cn 现在要求登录才能查看溢价率真实数据，未登录时显示"登录"占位符
+
+### 已知限制
+- jisilu.cn 溢价率数据需登录才能查看，需配置 JISILU_USERNAME/JISILU_PASSWORD 环境变量
+
+### 待验证和完成的工作（feature_list.json）
+
+impl-01 ~ impl-06（通知模板UI、历史查看器、日志查看器、旧文件清理、Docker验证、README）
+
+================================================================================

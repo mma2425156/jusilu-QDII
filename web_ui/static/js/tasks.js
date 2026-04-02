@@ -476,7 +476,72 @@ const TaskModule = (function() {
       setTimeout(() => modal.remove(), 300);
     });
   }
-  
+
+  /**
+   * Cron 表达式前端校验
+   */
+  function validateCronExpression(cron) {
+    if (!cron || typeof cron !== 'string') {
+      return { valid: false, message: '表达式为空', description: '' };
+    }
+    var parts = cron.trim().split(/\s+/);
+    if (parts.length !== 5) {
+      return { valid: false, message: '格式错误：需要 5 个字段（分 时 日 月 周）', description: '' };
+    }
+    var minute = parts[0], hour = parts[1], day = parts[2], month = parts[3], dow = parts[4];
+
+    if (cron === '* * * * *')
+      return { valid: true, message: '✓', description: '每分钟执行一次' };
+
+    // 常用格式检测
+    var descriptions = [];
+    var dayNames = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
+    if (day === '*' && month === '*' && !/^\*$/.test(dow)) {
+      var days = dow.split(',').map(function(d) { return parseInt(d); });
+      var h = parseInt(hour), m = parseInt(minute);
+      if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+        var dayStr = days.map(function(d) { return dayNames[d] || d; }).join('、');
+        descriptions.push(dayStr + ' ' + String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ' 执行');
+      }
+    } else if (day !== '*' && month === '*' && dow === '*') {
+      var h2 = parseInt(hour), m2 = parseInt(minute), d2 = parseInt(day);
+      if (!isNaN(h2) && !isNaN(m2) && !isNaN(d2)) {
+        descriptions.push('每月 ' + d2 + '日 ' + String(h2).padStart(2,'0') + ':' + String(m2).padStart(2,'0') + ' 执行');
+      }
+    }
+
+    // 范围校验
+    var checks = [
+      { val: minute, min: 0, max: 59, name: '分钟' },
+      { val: hour, min: 0, max: 23, name: '小时' },
+      { val: day, min: 1, max: 31, name: '日期' },
+      { val: month, min: 1, max: 12, name: '月份' },
+      { val: dow, min: 0, max: 6, name: '星期' },
+    ];
+    for (var i = 0; i < checks.length; i++) {
+      var c = checks[i];
+      var val = c.val;
+      if (val === '*' || val === '?' || /^\*\\/\d+$/.test(val)) continue;
+      var items = val.split(',');
+      for (var j = 0; j < items.length; j++) {
+        var item = items[j];
+        if (/^\d+-\d+$/.test(item)) {
+          var rp = item.split('-');
+          var r1 = parseInt(rp[0]), r2 = parseInt(rp[1]);
+          if (isNaN(r1) || isNaN(r2) || r1 > r2 || r1 < c.min || r2 > c.max)
+            return { valid: false, message: '范围错误 [' + c.name + ']: ' + item, description: '' };
+        } else {
+          var n = parseInt(item);
+          if (isNaN(n) || n < c.min || n > c.max)
+            return { valid: false, message: '值超出 [' + c.name + ']: ' + item + '（应为 ' + c.min + '-' + c.max + '）', description: '' };
+        }
+      }
+    }
+
+    return { valid: true, message: '✓ 表达式正确', description: descriptions[0] || '' };
+  }
+
   /**
    * 构建任务数据
    */
@@ -510,7 +575,14 @@ const TaskModule = (function() {
       app.showToast('表单错误', '请至少选择一天', 'warning');
       return null;
     }
-    
+
+    // 前端 Cron 表达式校验
+    const cronResult = TaskModule.validateCron(cronExpression);
+    if (!cronResult.valid) {
+      app.showToast('Cron 表达式错误', cronResult.message, 'danger');
+      return null;
+    }
+
     // 处理收件人
     const recipients = document.getElementById('recipients').value
       .split(',')
@@ -807,7 +879,8 @@ const TaskModule = (function() {
     editTask,
     viewTaskLogs,
     deleteTask,
-    resetTaskForm
+    resetTaskForm,
+    validateCron: validateCronExpression,
   };
 })();
 

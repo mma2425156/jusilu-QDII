@@ -1,0 +1,88 @@
+{
+  "project": "QDII基金监控系统",
+  "version": "1.0",
+  "created": "2026-04-02",
+  "updated": "2026-04-02",
+  "methodology": "Effective harnesses for long-running agents (https://www.anthropic.com/engineering/effective-harnesses-for-long-running-agents)",
+  "description": "基于 Flask + Playwright + SQLAlchemy 的 QDII 基金溢价率监控系统，支持 10 种多渠道推送通知，提供 WebUI 界面供非技术用户配置。",
+
+  "status": "in_progress",
+
+  "harness": {
+    "initializer_done": true,
+    "files": {
+      "feature_list": "feature_list.json",
+      "progress_log": "progress.txt",
+      "init_script": "init.sh"
+    },
+    "rules": [
+      "每个会话只做 1-2 个功能，不要贪多",
+      "开始前先运行 bash init.sh 了解当前状态",
+      "读取 progress.txt 获取上次进度",
+      "读取 feature_list.json 找到下一个优先级最高的未完成功能",
+      "完成后更新 feature_list.json 的 passes 字段（false → true）",
+      "每次完成功能后 git commit",
+      "会话结束前更新 progress.txt",
+      "只修改 passes 字段，不要删除或编辑其他字段"
+    ]
+  },
+
+  "milestones": [
+    {
+      "name": "基础功能验证",
+      "feature_ids": ["verify-01", "verify-02", "verify-03", "verify-04"],
+      "status": "in_progress",
+      "description": "验证依赖安装、Web服务、数据库、快照对比四大基础功能正常运行"
+    },
+    {
+      "name": "WebUI 功能完善",
+      "feature_ids": ["impl-01", "impl-02", "impl-03"],
+      "status": "pending",
+      "description": "补充通知模板管理界面、历史数据查看器、任务日志查看器"
+    },
+    {
+      "name": "部署与文档",
+      "feature_ids": ["impl-04", "impl-05", "impl-06"],
+      "status": "pending",
+      "description": "清理旧文件、Docker 部署验证、更新 README 文档"
+    }
+  ],
+
+  "tech_stack": {
+    "语言": "Python 3.8+",
+    "Web框架": "Flask 2.0 + Flask-SQLAlchemy + Flask-WTF",
+    "爬虫": "Playwright (Chromium)",
+    "调度": "APScheduler 3.10",
+    "前端": "Bootstrap 5 + 原生 JS（无 jQuery）",
+    "数据库": "SQLite（默认）",
+    "通知": "10种渠道（钉钉/飞书/企微/TG/PushPlus/Server酱/Bark/iGot/Webhook/邮件）"
+  },
+
+  "key_files": [
+    "main.py",
+    "apps/app_factory.py",
+    "apps/api/routes.py",
+    "apps/spider/fetcher.py",
+    "apps/spider/parser.py",
+    "apps/notify/notification_service.py",
+    "apps/notify/sendNotify.py",
+    "apps/scheduler/runner.py",
+    "models/fund_snapshot.py",
+    "models/task.py",
+    "models/notify_channel.py",
+    "models/notify_template.py",
+    "web_ui/templates/index_new.html",
+    "web_ui/static/js/notify.js",
+    "config/settings.py"
+  ],
+
+  "summary": {
+    "total_features": 10,
+    "categories": {
+      "foundation": 7,
+      "components": 3
+    },
+    "estimated_files_to_edit": 12,
+    "priority_order": "verify-01 → verify-02 → verify-03 → verify-04 → impl-01 → impl-02 → impl-03 → impl-04 → impl-05 → impl-06"
+  }
+}

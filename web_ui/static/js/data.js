@@ -1,25 +1,20 @@
 /**
- * 集思录QDII数据助手 - 数据处理模块
+ * 集思录QDII数据助手 - 数据处理模块（重构版）
+ * 支持溢价率变化对比指标
  */
 
 const DataModule = (function() {
   'use strict';
-  
-  // 私有变量
+
   let refreshCooldown = 0;
   let refreshCooldownInterval;
-  
-  /**
-   * 初始化
-   */
+
   function init() {
-    // 绑定刷新数据事件
     const refreshBtn = document.getElementById('refreshBtn');
     if (refreshBtn) {
       refreshBtn.addEventListener('click', refreshData);
     }
-    
-    // 绑定筛选表单事件
+
     const filterForm = document.getElementById('filterForm');
     if (filterForm) {
       filterForm.addEventListener('submit', function(e) {
@@ -27,228 +22,181 @@ const DataModule = (function() {
         applyFilters();
       });
     }
+
+    // 跳转按钮：邮件设置 → 定时任务
+    const goToTaskBtn = document.getElementById('goToTaskConfig');
+    if (goToTaskBtn) {
+      goToTaskBtn.addEventListener('click', function() {
+        const mailModal = bootstrap.Modal.getInstance(document.getElementById('mailConfigModal'));
+        if (mailModal) mailModal.hide();
+        setTimeout(function() {
+          const taskModal = new bootstrap.Modal(document.getElementById('taskConfigModal'));
+          taskModal.show();
+        }, 300);
+      });
+    }
   }
-  
-  /**
-   * 刷新数据
-   */
+
   function refreshData() {
     if (refreshCooldown > 0) return;
-    
+
     const btn = document.getElementById('refreshBtn');
     const spinner = document.getElementById('refreshSpinner');
     const text = document.getElementById('refreshText');
-    
     if (!btn || !spinner || !text) return;
-    
+
     btn.disabled = true;
-    btn.classList.remove('btn-primary');
-    btn.classList.add('btn-secondary');
     text.textContent = '数据刷新中...';
     spinner.classList.remove('d-none');
-    
-    // 设置冷却时间
-    refreshCooldown = 30;
-    
-    // 获取筛选参数
-    const parameters = {
-      premium_min: document.getElementById('premium_min').value,
-      status_filter: document.getElementById('status_filter').value
+
+    const statusAlert = document.getElementById('refreshStatus');
+    const statusMessage = document.getElementById('statusMessage');
+    const statusOutput = document.getElementById('statusOutput');
+
+    if (statusAlert) {
+      statusAlert.classList.remove('d-none', 'alert-danger');
+      statusAlert.classList.add('alert-info');
+    }
+    if (statusMessage) statusMessage.innerHTML = '<strong>正在刷新数据...</strong>';
+    if (statusOutput) statusOutput.textContent = '准备开始抓取数据...';
+
+    // SSE 方式实时获取进度
+    const eventSource = new EventSource('/api/refresh-status');
+    let lastEventTime = Date.now();
+
+    const checkInterval = setInterval(function() {
+      if (Date.now() - lastEventTime > 15000) {
+        eventSource.close();
+        clearInterval(checkInterval);
+        if (statusMessage) statusMessage.innerHTML = '<strong class="text-danger">连接超时</strong>';
+        resetButton();
+      }
+    }, 3000);
+
+    eventSource.onmessage = function(event) {
+      lastEventTime = Date.now();
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === 'completed') {
+          eventSource.close();
+          clearInterval(checkInterval);
+          if (statusMessage) statusMessage.innerHTML = '<strong class="text-success">刷新成功！</strong>';
+          if (statusOutput) statusOutput.textContent = data.message;
+          // 自动刷新页面
+          setTimeout(function() { window.location.reload(); }, 1500);
+        } else if (data.status === 'error') {
+          eventSource.close();
+          clearInterval(checkInterval);
+          if (statusMessage) statusMessage.innerHTML = '<strong class="text-danger">刷新失败</strong>';
+          if (statusOutput) statusOutput.textContent = data.message;
+          startCooldown();
+        } else {
+          if (statusOutput) {
+            const lines = statusOutput.textContent.split('\n');
+            lines.push(data.message);
+            if (lines.length > 10) lines.shift();
+            statusOutput.textContent = lines.join('\n');
+            statusOutput.scrollTop = statusOutput.scrollHeight;
+          }
+        }
+      } catch(e) {}
     };
-    
-    // 发送刷新请求
-    API.refreshData(parameters)
-      .then(response => {
-        // 显示刷新状态
-        const statusAlert = document.getElementById('refreshStatus');
-        const statusMessage = document.getElementById('statusMessage');
-        const statusOutput = document.getElementById('statusOutput');
-        
-        if (statusAlert && statusMessage && statusOutput) {
-          statusAlert.classList.remove('d-none', 'alert-danger');
-          statusAlert.classList.add('alert-info');
-          statusMessage.innerHTML = `<strong>${response.message}</strong> - ${response.timestamp}`;
-          statusOutput.textContent = response.output || '无详细输出';
-        }
-        
-        // 显示成功反馈
-        app.showToast('刷新成功', `数据已成功更新，发现 ${response.data.length} 条符合条件的数据`, 'success');
-        
-        // 更新表格数据
-        if (response.status === 'success') {
-          updateTableData(response.data);
-        }
-        
-        // 启动倒计时
-        if (text) text.textContent = `请等待 ${refreshCooldown}秒`;
-        refreshCooldownInterval = setInterval(updateRefreshButtonState, 1000);
-      })
-      .catch(error => {
-        console.error('刷新数据错误:', error);
-        
-        // 显示错误状态
-        const statusAlert = document.getElementById('refreshStatus');
-        const statusMessage = document.getElementById('statusMessage');
-        const statusOutput = document.getElementById('statusOutput');
-        
-        if (statusAlert && statusMessage && statusOutput) {
-          statusAlert.classList.remove('d-none', 'alert-info');
-          statusAlert.classList.add('alert-danger');
-          statusMessage.innerHTML = `<strong>刷新失败</strong> - ${new Date().toLocaleString()}`;
-          statusOutput.textContent = error.message || '未知错误';
-        }
-        
-        // 显示错误反馈
-        app.showToast('刷新失败', error.message, 'danger');
-        
-        // 启动倒计时
-        if (text) text.textContent = `请等待 ${refreshCooldown}秒`;
-        refreshCooldownInterval = setInterval(updateRefreshButtonState, 1000);
-      });
+
+    eventSource.onerror = function() {
+      eventSource.close();
+      clearInterval(checkInterval);
+      if (statusMessage) statusMessage.innerHTML = '<strong class="text-danger">连接错误</strong>';
+      startCooldown();
+    };
   }
-  
-  /**
-   * 更新刷新按钮状态
-   */
-  function updateRefreshButtonState() {
-    const btn = document.getElementById('refreshBtn');
-    const text = document.getElementById('refreshText');
-    const spinner = document.getElementById('refreshSpinner');
-    
-    if (!btn || !text || !spinner) {
-      clearInterval(refreshCooldownInterval);
+
+  function applyFilters() {
+    // 表单提交即可，页面会刷新
+    document.getElementById('filterForm').submit();
+  }
+
+  function updateTableData(data) {
+    const tbody = document.getElementById('dataTableBody');
+    if (!tbody) return;
+
+    if (!data || data.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" class="text-center py-4 text-muted">暂无数据</td></tr>';
       return;
     }
-    
-    if (refreshCooldown > 0) {
-      btn.disabled = true;
-      btn.classList.remove('btn-primary');
-      btn.classList.add('btn-secondary');
-      text.textContent = `请等待 ${refreshCooldown}秒`;
-      refreshCooldown--;
-    } else {
-      btn.disabled = false;
-      btn.classList.remove('btn-secondary');
-      btn.classList.add('btn-primary');
-      text.textContent = '刷新数据';
-      spinner.classList.add('d-none');
-      clearInterval(refreshCooldownInterval);
-    }
-  }
-  
-  /**
-   * 应用筛选条件
-   */
-  function applyFilters() {
-    const premiumMin = document.getElementById('premium_min').value;
-    const statusFilter = document.getElementById('status_filter').value;
-    
-    // 显示加载状态
-    const tableBody = document.getElementById('dataTableBody');
-    if (tableBody) {
-      tableBody.innerHTML = `
-        <tr>
-          <td colspan="5" class="text-center py-4">
-            <div class="spinner-border text-primary" role="status">
-              <span class="visually-hidden">加载中...</span>
-            </div>
-            <p class="mt-2 text-secondary">正在应用筛选条件...</p>
-          </td>
-        </tr>
-      `;
-    }
-    
-    // 发送筛选请求
-    fetch('/', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-      },
-      body: new URLSearchParams({
-        premium_min: premiumMin,
-        status_filter: statusFilter
-      })
-    })
-    .then(response => response.text())
-    .then(html => {
-      // 使用新HTML更新页面
-      const parser = new DOMParser();
-      const newDoc = parser.parseFromString(html, 'text/html');
-      const newTableBody = newDoc.getElementById('dataTableBody');
-      
-      if (tableBody && newTableBody) {
-        tableBody.innerHTML = newTableBody.innerHTML;
-      }
-      
-      // 显示成功消息
-      app.showToast('筛选完成', '数据已按条件筛选显示', 'success');
-    })
-    .catch(error => {
-      console.error('筛选错误:', error);
-      if (tableBody) {
-        tableBody.innerHTML = `
-          <tr>
-            <td colspan="5" class="text-center py-4 text-danger">
-              <i class="fas fa-exclamation-circle fa-2x mb-3"></i>
-              <p>筛选失败，请稍后再试</p>
-            </td>
-          </tr>
-        `;
-      }
-      
-      // 显示错误消息
-      app.showToast('筛选失败', '请检查筛选条件后重试', 'danger');
-    });
-  }
-  
-  /**
-   * 更新表格数据
-   */
-  function updateTableData(data) {
-    const tableBody = document.getElementById('dataTableBody');
-    if (!tableBody) return;
-    
+
     let html = '';
-    
-    data.forEach(item => {
-      html += `
-        <tr class="slide-in-up">
-          <td>${item.来源}</td>
-          <td>${item.代码}</td>
-          <td>${item.名称}</td>
-          <td>${item['T-1溢价率']}</td>
-          <td>
-            <span class="badge ${getStatusBadgeClass(item.申购状态)}">
-              ${item.申购状态}
-            </span>
-          </td>
-        </tr>
-      `;
+    data.forEach(function(item) {
+      const premium = item.premium_today;
+      const change = item.change;
+      const status = item.status || '';
+
+      // 溢价率颜色
+      let premiumColor = 'text-success';
+      let premiumText = 'N/A';
+      if (premium !== null && premium !== undefined) {
+        premiumText = premium.toFixed(2) + '%';
+        if (premium >= 5) premiumColor = 'text-danger';
+        else if (premium >= 3) premiumColor = 'text-warning';
+      }
+
+      // 变化颜色
+      let changeColor = 'text-muted';
+      let changeIcon = '';
+      let changeText = '-';
+      if (change !== null && change !== undefined) {
+        if (change > 0) { changeColor = 'text-danger'; changeIcon = '↑'; }
+        else if (change < 0) { changeColor = 'text-success'; changeIcon = '↓'; }
+        changeText = changeIcon + change.toFixed(2) + '%';
+      }
+
+      // 状态徽章
+      let badgeClass = 'bg-secondary';
+      if (status.includes('开放')) badgeClass = 'bg-success';
+      else if (status.includes('限')) badgeClass = 'bg-warning text-dark';
+      else if (status.includes('暂停')) badgeClass = 'bg-danger';
+
+      html += '<tr>' +
+        '<td>' + (item.source || '') + '</td>' +
+        '<td>' + (item.code || item.fund_code || '') + '</td>' +
+        '<td>' + (item.name || item.fund_name || '') + '</td>' +
+        '<td class="fw-bold ' + premiumColor + '">' + premiumText + '</td>' +
+        '<td class="fw-bold ' + changeColor + '">' + changeText + '</td>' +
+        '<td><span class="badge ' + badgeClass + '">' + status + '</span></td>' +
+        '</tr>';
     });
-    
-    tableBody.innerHTML = html;
+
+    tbody.innerHTML = html;
   }
-  
-  /**
-   * 获取状态徽章样式类
-   */
-  function getStatusBadgeClass(status) {
-    if (status === '开放申购') return 'badge-success';
-    if (status === '限量申购') return 'badge-warning';
-    if (status === '暂停申购') return 'badge-danger';
-    return 'badge-secondary';
+
+  function resetButton() {
+    const btn = document.getElementById('refreshBtn');
+    const spinner = document.getElementById('refreshSpinner');
+    const text = document.getElementById('refreshText');
+    if (btn) btn.disabled = false;
+    if (text) text.textContent = '刷新数据';
+    if (spinner) spinner.classList.add('d-none');
   }
-  
-  // 导出公共方法
-  return {
-    init,
-    refreshData,
-    applyFilters
-  };
+
+  function startCooldown() {
+    refreshCooldown = 30;
+    resetButton();
+    const text = document.getElementById('refreshText');
+    if (text) text.textContent = '冷却中 (' + refreshCooldown + 's)';
+    const btn = document.getElementById('refreshBtn');
+    if (btn) btn.disabled = true;
+
+    refreshCooldownInterval = setInterval(function() {
+      refreshCooldown--;
+      if (text) text.textContent = '冷却中 (' + refreshCooldown + 's)';
+      if (refreshCooldown <= 0) {
+        clearInterval(refreshCooldownInterval);
+        refreshCooldown = 0;
+        resetButton();
+      }
+    }, 1000);
+  }
+
+  return { init, refreshData, applyFilters, updateTableData };
 })();
 
-// 将模块导出到全局作用域
-window.DataModule = DataModule;
-
-// 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', DataModule.init); 
+document.addEventListener('DOMContentLoaded', DataModule.init);
