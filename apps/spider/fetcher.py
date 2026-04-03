@@ -74,12 +74,15 @@ def _is_logged_in(context) -> bool:
 
 def _login(context) -> bool:
     """
-    登录 jisilu.cn。
+    尝试用用户名密码登录 jisilu.cn。
     返回是否登录成功。
+
+    注意：集思录可能在多次失败后要求图形验证码，
+    此时登录会超时，但 Session Cookie 仍可能保存部分有效数据。
     """
     creds = _get_login_credentials()
     if not creds:
-        logger.warning("未配置 JISILU_USERNAME/JISILU_PASSWORD，无法自动登录")
+        logger.warning("未配置 JISILU_USERNAME/JISILU_PASSWORD，跳过自动登录")
         return False
 
     username, password = creds
@@ -88,45 +91,68 @@ def _login(context) -> bool:
         page = context.new_page()
         page.goto("https://www.jisilu.cn/login/", timeout=15000)
         page.wait_for_load_state("domcontentloaded")
-        page.wait_for_timeout(1000)  # 等待表单渲染
+        page.wait_for_timeout(1500)  # 等待 JS 初始化
 
-        # 找到登录表单并填写（集思录用 user_name 字段）
+        # 检查是否已跳转到主页（Cookie 已登录）
+        if page.url != "https://www.jisilu.cn/login/" and "/login" not in page.url:
+            logger.info("Cookie 已登录，跳过表单登录")
+            page.close()
+            return True
+
+        # 检查是否有登录表单
+        try:
+            page.wait_for_selector('input[name="user_name"]', timeout=3000)
+        except Exception:
+            logger.warning("登录页面无 user_name 表单，可能已登录或页面结构变更")
+            page.close()
+            return False
+
         page.fill('input[name="user_name"]', username)
         page.fill('input[name="password"]', password)
 
-        # 提交登录（登录按钮是 <a class="btn btn-jisilu">）
+        # 提交登录
         page.click('a.btn.btn-jisilu')
-        page.wait_for_load_state("networkidle", timeout=10000)
+        page.wait_for_load_state("networkidle", timeout=15000)
+        page.wait_for_timeout(2000)
 
         logged_in = _is_logged_in(context)
         page.close()
 
         if logged_in:
             _save_cookies(context)
-            logger.info("jisilu.cn 登录成功")
+            logger.info("jisilu.cn 用户名密码登录成功")
             return True
         else:
-            logger.error("jisilu.cn 登录失败，请检查用户名密码")
+            logger.error("jisilu.cn 用户名密码登录失败（可能触发了验证码）")
             return False
+
     except Exception as e:
         logger.error(f"jisilu.cn 登录过程出错: {e}")
         return False
 
 
 def _fetch_api(suffix: str, headers: dict) -> list[dict]:
-    """通过 JSON API 获取指定市场数据。"""
+    """通过 JSON API 获取指定市场数据。返回空列表表示需要重新登录。"""
     import requests
     url = f"https://www.jisilu.cn/data/qdii/qdii_list/{suffix}"
     try:
         r = requests.get(url, headers=headers, timeout=15)
-        if r.status_code != 200:
+        if r.status_code == 200:
+            data = r.json()
+            if data.get("isError"):
+                msg = data.get("msg", "")
+                if "登录" in msg:
+                    logger.warning(f"API {suffix}: Cookie 已过期，需要重新登录")
+                    return []  # 触发重新登录
+                logger.warning(f"API {suffix} 错误: {msg}")
+                return []
+            return data.get("rows", [])
+        elif r.status_code in (401, 403):
+            logger.warning(f"API {suffix}: HTTP {r.status_code}，Cookie 无效")
+            return []
+        else:
             logger.warning(f"API {suffix} 返回状态码 {r.status_code}")
             return []
-        data = r.json()
-        if data.get("isError"):
-            logger.warning(f"API {suffix} 错误: {data.get('msg', '')}")
-            return []
-        return data.get("rows", [])
     except Exception as e:
         logger.warning(f"API {suffix} 请求失败: {e}")
         return []
@@ -217,6 +243,34 @@ def fetch_qdii_data() -> pd.DataFrame:
                 api_success = True
         else:
             logger.warning(f"抓取 [{label}] 返回空数据")
+
+    # ── Cookie 过期：尝试用户名密码登录 ───────────────────────
+    if not api_success and _get_login_credentials():
+        logger.info("Cookie 可能过期，尝试用户名密码登录...")
+        try:
+            with sync_playwright() as p:
+                browser = p.chromium.launch(headless=True)
+                context = browser.new_context()
+                if _login(context):
+                    # 登录成功，重新构建 Cookie
+                    new_cookies = context.cookies()
+                    _save_cookies(context)
+                    # 从新保存的 Cookie 文件重新加载（确保格式正确）
+                    new_cache = pickle.loads(_COOKIE_FILE.read_bytes())
+                    cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in new_cache)
+                    base_headers["Cookie"] = cookie_str
+                    # 重试 API
+                    for suffix, label in api_map:
+                        rows = _fetch_api(suffix, base_headers)
+                        if rows:
+                            df = _api_rows_to_df(rows, label)
+                            if not df.empty:
+                                all_raw.append(df)
+                                logger.info(f"重试抓取 [{label}] 成功: {len(df)} 条")
+                                api_success = True
+                browser.close()
+        except Exception as e:
+            logger.error(f"用户名密码登录尝试失败: {e}")
 
     # ── 降级：Playwright HTML 抓取 ─────────────────────────────
     if not api_success:
