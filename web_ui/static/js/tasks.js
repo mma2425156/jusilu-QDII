@@ -522,7 +522,7 @@ const TaskModule = (function() {
     for (var i = 0; i < checks.length; i++) {
       var c = checks[i];
       var val = c.val;
-      if (val === '*' || val === '?' || /^\*\\/\d+$/.test(val)) continue;
+      if (val === '*' || val === '?' || /^\*[\/\d]+$/.test(val)) continue;
       var items = val.split(',');
       for (var j = 0; j < items.length; j++) {
         var item = items[j];
