@@ -4,9 +4,10 @@
 一个简单易用的QDII基金数据工具，帮助您轻松获取和分析海外基金信息，无需编程基础也能快速上手！
 
 主要功能：
-- 一键获取最新QDII基金数据
-- 智能筛选优质基金
-- 直观的网页界面操作
+- 一键获取最新QDII基金数据（溢价率、净值、申赎状态等）
+- 智能筛选高溢价基金，支持历史快照对比
+- 多渠道通知（钉钉、飞书、邮件等10种推送方式）
+- 直观的网页界面操作，支持定时自动抓取
 
 ## 🛠️ 超详细安装指南
 
@@ -64,130 +65,155 @@
      python scripts/install_deps.py
      ```
 
-### 第4步：配置环境变量
+### 第4步：配置集思录登录（重要！）
 
-#### 1. 创建配置文件
-```bash
-# Windows
-ren .env.example .env
+集思录的溢价率数据需要登录才能查看。系统支持两种登录方式：
 
-# Mac/Linux 
-mv .env.example .env
-```
+#### 方式一：导出 Cookie（推荐，稳定可靠）
 
-#### 2. 详细配置说明
-用文本编辑器打开`.env`文件，按以下分类配置：
+1. **用 Chrome/Edge 登录集思录**
+   - 打开浏览器，访问 https://www.jisilu.cn
+   - 点击右上角"登录"，使用账号密码登录
 
-##### 📧 邮件通知设置
+2. **打开开发者工具**
+   - 按 `F12` 或 `Ctrl+Shift+I`
+   - 切换到 **Network（网络）** 标签页
+
+3. **刷新页面触发请求**
+   - 在地址栏回车刷新页面
+   - 在 Network 中找到任意一条请求（URL 包含 `jisilu.cn`）
+   - 点击该请求，在 **Request Headers** 中找到 `Cookie:` 字段
+
+4. **复制 Cookie 内容**
+   - 复制整个 `Cookie:` 后面的全部内容（很长，以分号分隔）
+   - 形如：`kbzw__Session=xxxxx; uid=xxxxx; ...`
+
+5. **写入 Cookie 文件**
+   - 运行以下命令（会自动写入到 `qdii_tables/.jisilu_cookies.pkl`）：
+   ```python
+   import pickle
+   from pathlib import Path
+
+   # 替换下面 cookies 列表中的 value 为你复制的 Cookie 值
+   cookies = [
+       {'name': 'kbzw__Session', 'value': '这里填你复制的Cookie', 'domain': 'www.jisilu.cn', 'path': '/'},
+   ]
+   Path('qdii_tables/.jisilu_cookies.pkl').write_bytes(pickle.dumps(cookies))
+   print('Cookie 写入成功')
+   ```
+
+   或者直接用浏览器插件（更简单）：
+   - 安装 **EditThisCookie** 或 **Cookie Editor** 插件
+   - 登录集思录后，点击插件图标
+   - 导出全部 Cookie，保存为 JSON
+   - 把 JSON 内容发给我，我帮你转成 pickle 格式
+
+6. **验证 Cookie 有效**
+   ```bash
+   python main.py --crawl
+   ```
+   看到 "欧美市场 XX 条" 等日志即表示成功。
+
+> **Cookie 有效期**：约 1 个月，过期后重新导出即可。
+
+#### 方式二：填写用户名密码（备用）
+
+> 注意：集思录可能会触发图形验证码，自动登录的成功率不稳定。
+> 如果 Cookie 方式正常工作，建议优先使用方式一。
+
+1. 编辑 `config/.env` 文件，取消注释并填写：
+   ```ini
+   JISILU_USERNAME=你的集思录用户名
+   JISILU_PASSWORD=你的集思录密码
+   ```
+
+2. 运行 `python main.py --crawl` 测试。如果提示"登录失败"，请使用方式一导出 Cookie。
+
+---
+
+### 第5步：配置其他选项（如需要）
+
+#### 📧 邮件通知（可选）
 ```ini
-# 发件人邮箱地址（必须支持SMTP服务）
-MAIL_SENDER=your_email@example.com
-# 发件人显示名称
-MAIL_SENDER_NAME=QDII基金监控系统
-# SMTP服务器地址
-SMTP_SERVER=smtp.example.com
-# SMTP端口（SSL通常为465/587）
-SMTP_PORT=587
-# SMTP登录用户名（通常是邮箱地址）
-SMTP_USERNAME=your_email@example.com
-# SMTP登录密码（可能是邮箱密码或专用应用密码）
-SMTP_PASSWORD=your_password
-# 是否使用SSL加密（true/false）
-SMTP_USE_SSL=true
-```
-
-##### 🔍 数据筛选设置
-```ini
-# 溢价率默认筛选阈值（0-10）
-PREMIUM_THRESHOLD=5.0
-# 默认申购状态筛选（all/open/limited/closed）
-DEFAULT_STATUS_FILTER=open
-# 数据刷新间隔（秒，最小30）
-REFRESH_INTERVAL=60
-```
-
-##### 🗃️ 数据库配置
-```ini
-# 数据库文件路径（SQLite）
-DB_PATH=web_ui/config.db
-# 数据库备份保留天数
-DB_BACKUP_DAYS=7
-```
-
-##### 🌐 Web服务设置
-```ini
-# 服务监听端口
-FLASK_PORT=8866
-# 服务监听地址（0.0.0.0表示允许外部访问）
-FLASK_HOST=0.0.0.0
-# 调试模式（开发环境设为true，生产环境必须设为false）
-FLASK_DEBUG=false
-# 密钥（用于会话加密，建议修改为随机字符串）
-SECRET_KEY=your_secret_key_here
-```
-
-#### 3. 配置示例
-```ini
-# 邮件配置示例（QQ邮箱）
 SMTP_SERVER=smtp.qq.com
 SMTP_PORT=465
-SMTP_USERNAME=123456@qq.com
-SMTP_PASSWORD=xxxxxxxxxxxxxx  # 需使用QQ邮箱授权码
-SMTP_USE_SSL=true
+SMTP_USERNAME=你的邮箱
+SMTP_PASSWORD=邮箱授权码（不是登录密码）
+```
+> QQ 邮箱授权码获取：QQ邮箱 → 设置 → 账户 → POP3/IMAP → 生成授权码
 
-# 筛选设置示例
-PREMIUM_THRESHOLD=3.5  # 筛选溢价率>3.5%的基金
-DEFAULT_STATUS_FILTER=open  # 默认只显示开放申购的基金
+#### 💬 通知渠道（可选，任选一种）
+- **钉钉机器人**：填 `DINGTALK_TOKEN` 和 `DINGTALK_SECRET`
+- **飞书机器人**：填 `FEISHU_TOKEN` 和 `FEISHU_SECRET`
+- **Telegram Bot**：填 `TELEGRAM_TOKEN` 和 `TELEGRAM_CHAT_ID`
+- **企业微信**：填 `WECOM_CORP_ID`、`WECOM_AGENT_ID`、`WECOM_CORP_SECRET`
+- **PushPlus**：填 `PUSHPLUS_TOKEN`
+- **Server酱**：填 `SERVERCHAN_SCKEY`
+
+#### 📊 数据筛选设置
+```ini
+# 溢价率下限（默认 3.5）
+PREMIUM_THRESHOLD=3.5
+# 申赎状态筛选（all/限/开放/暂停）
+DEFAULT_STATUS_FILTER=all
 ```
 
-#### 4. 注意事项
-1. 所有密码类配置**不要**包含`#`和空格等特殊字符
-2. 修改配置后需要**重启服务**才能生效
-3. 生产环境务必设置`FLASK_DEBUG=false`
-4. 建议定期备份`.env`文件
-
-### 第5步：启动程序
-1. 双击 `run.bat` (Windows) 或运行：
-   ```bash
-   python main.py
-   ```
-2. 自动打开浏览器访问：http://localhost:8866
+### 第6步：启动程序
+```bash
+python main.py
+```
+- 直接运行：启动 Web 服务（访问 http://localhost:8866）
+- `python main.py --crawl`：仅抓取数据并退出
+- `python main.py --snapshot`：抓取数据并保存历史快照
 
 ## 🖥️ 使用教程
 
 ### 基础操作
-1. 在网页中设置筛选条件：
-   - 溢价率范围（推荐0-10%）
-   - 申购状态（开放/限购）
-2. 点击"刷新数据"获取最新结果
-3. 点击基金名称查看详情
+1. 打开浏览器访问 http://localhost:8866
+2. 设置溢价率下限（默认 3.5%，目前 QDII 多为折价状态，可设为负值如 -1%）
+3. 选择申赎状态筛选条件
+4. 点击"刷新数据"获取最新结果
+5. 查看基金详情：溢价率、净值日期、申赎状态等
 
-![操作界面截图](https://example.com/ui_demo.png)
+### 查看溢价率变化（需要多次抓取）
+```bash
+# 每天运行一次，保存历史快照
+python main.py --snapshot
+```
+多次快照后，WebUI 会显示今日 vs 昨日的溢价率变化。
+
+### 定时自动推送
+在 WebUI 中创建定时任务，配置通知渠道和推送模板，系统会自动按设定时间抓取并推送。
 
 ## ❓ 常见问题
 
 ### 安装问题
 1. **报错"python不是内部命令"**：
    - 重新安装Python并勾选"Add to PATH"
-2. **脚本运行闪退**：
-   - 右键以管理员身份运行
-   - 或查看 `error.log` 文件
+2. **playwright install 失败**：
+   ```bash
+   pip install playwright
+   playwright install chromium
+   ```
 
 ### 使用问题
-1. **数据不更新？**
-   - 确保网络连接正常
-   - 等待30秒后重试（有访问频率限制）
-2. **浏览器打不开？**
+1. **抓取数据为 0 条？**
+   - 确认已配置集思录 Cookie 或用户名密码
+   - 运行 `python main.py --crawl` 查看日志
+   - Cookie 过期，重新导出
+2. **数据不更新？**
+   - 集思录有访问频率限制，等待 30 秒后重试
+3. **浏览器打不开？**
    - 手动访问 http://localhost:8866
+
+### 集思录登录问题
+1. **Cookie 怎么获取？**
+   - 见上方"第4步：配置集思录登录"的详细图解
+2. **Cookie 多久过期？**
+   - 通常 1 个月左右，过期后重新登录集思录并导出
+3. **可以用账号密码登录吗？**
+   - 可以，但集思录可能触发验证码，成功率不稳定
+   - 建议优先使用 Cookie 方式
 
 
 ## 🔧 高级设置
-如需自定义配置，请修改 `.env` 文件：
-```
-# 邮件通知设置
-EMAIL=your@email.com
-# 筛选阈值
-PREMIUM_THRESHOLD=5.0
-```
-
-
