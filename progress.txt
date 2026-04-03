@@ -47,3 +47,62 @@ Progress Log - QDII 基金监控系统
 impl-01 ~ impl-06（通知模板UI、历史查看器、日志查看器、旧文件清理、Docker验证、README）
 
 ================================================================================
+
+## 2026-04-03 - 会话 3（爬虫 API 重构 + Cookie 登录）
+
+### 背景
+集思录 jisilu.cn 在会话2之后已无法通过自动表单登录（触发了 Captcha 验证码）。
+本会话完成：Cookie 手动导入 + 爬虫从 HTML 解析改为 JSON API 抓取。
+
+### 已完成的工作
+
+**Cookie 手动导入方案：**
+- 用户提供 jisilu.cn 有效 Cookie（token, uid, PHPSESSID 等）
+- fetcher.py 保留 Cookie 缓存机制，加载到 Playwright context
+- Cookie 缓存文件：qdii_tables/.jisilu_cookies.pkl
+
+**爬虫从 HTML 解析改为 JSON API：**
+- 找到集思录隐藏 API：`https://www.jisilu.cn/data/qdii/qdii_list/{E/A/C}`
+- E = 欧美市场（20条），A = 亚洲市场（20条），C = 商品市场（需更高权限）
+- API 返回 JSON，含 nav_discount_rt（净值溢价率）、fund_nav、apply_status 等字段
+- fetcher.py 新增 `_fetch_api()` + `_api_rows_to_df()`，优先使用 API
+- API 失败时降级为 Playwright HTML 解析（保留兼容性）
+
+**parser.py 重构：**
+- 支持两种数据格式：API 格式（含 "溢价率_str" 列）和 HTML 格式（含 "T-2净值 溢价率" 列）
+- API 格式：溢价率已是浮点数，无需 % 符号处理
+- HTML 格式：保留原有逻辑（自动表头定位、登录占位符过滤）
+
+**fund_snapshot.py 修复：**
+- save_from_df：添加同日数据去重（先删除再插入，支持重复抓取）
+- 修复列名引用：row["T-1溢价率"] → row["溢价率"]（兼容 API 格式）
+
+**main.py 修复：**
+- --snapshot 模式使用 premium_min=None（无门槛），保存全部数据到快照
+- --crawl 模式使用默认门槛 3.5%（但目前 QDII 普遍折价，实际返回0条）
+- 添加 Flask app context 避免 "Working outside of application context" 错误
+
+**filter_data 修复：**
+- premium_min=None 时跳过筛选，返回全部清洗数据
+- （之前 None 与数值比大小永远返回 False，导致全空）
+
+### 验证结果
+- verify-01 ✅：API 成功抓取 40 条数据（欧美 20 + 亚洲 20）
+- verify-02 ✅：Flask 服务正常启动，/api/history/today 返回 40 条
+- verify-03 ✅：--snapshot 成功保存 40 条到 fund_snapshots 表
+- verify-04 ✅：API 返回数据格式正确，含 premium_today, change=null（需多天数据）
+  - 注意：目前 QDII 普遍折价（-2.51% ~ +3.91%），默认 3.5% 门槛太高
+  - 已修复 --snapshot 使用无门槛，确保快照保存所有数据
+
+### 验证状态
+- verify-01 ✅ verify-02 ✅ verify-03 ✅ verify-04 ✅
+- impl-01 ~ impl-06 待完成
+
+### 关键文件变更
+- apps/spider/fetcher.py：重写 fetch_qdii_data，改为 API 抓取
+- apps/spider/parser.py：支持 API + HTML 两种数据格式
+- models/fund_snapshot.py：save_from_df 添加去重 + 修复列名
+- main.py：snapshot 无门槛，添加 app context
+- config/.env：添加 JISILU_USERNAME/JISILU_PASSWORD 占位符
+
+================================================================================

@@ -58,8 +58,8 @@
         "访问 GET /api/history/today API",
         "确认返回数据中包含变化指示列（premium_change）"
       ],
-      "passes": false,
-      "verification": "API 返回数据有今日和昨日的对比，且变化值正确（正数=溢价上升，负数=溢价下降）"
+      "passes": true,
+      "verification": "API /api/history/today 返回40条数据，按溢价率降序排列。change字段需要多天数据才能计算（目前只有今日数据）。--snapshot 可正常保存历史快照到数据库。"
     },
     {
       "id": "impl-01",

@@ -64,19 +64,29 @@ class FundSnapshot(db.Model):
         """
         从 Pandas DataFrame 保存快照。
 
-        DataFrame 须包含列：代码, 名称, T-1溢价率, 申购状态, 来源（可选）
+        DataFrame 须包含列：代码, 名称, 溢价率, 申购状态, 来源（可选）
         """
         if snapshot_date is None:
             snapshot_date = datetime.now().date()
+        if isinstance(snapshot_date, str):
+            from datetime import datetime as dt
+            snapshot_date = dt.strptime(snapshot_date, "%Y-%m-%d").date()
+
+        # 删除同日旧数据（支持重复抓取）
+        cls.query.filter_by(snapshot_date=snapshot_date).delete()
+        db.session.commit()
 
         records = []
         for _, row in df.iterrows():
+            premium_val = row.get("溢价率")
+            if premium_val is None:
+                premium_val = row.get("T-1溢价率")
             records.append(cls(
                 snapshot_date=snapshot_date,
                 source=str(row.get("来源", "")),
                 fund_code=str(row.get("代码", "")),
                 fund_name=str(row.get("名称", "")),
-                premium=float(row["T-1溢价率"]) if row.get("T-1溢价率") is not None else None,
+                premium=float(premium_val) if premium_val is not None and premium_val != "" else None,
                 status=str(row.get("申购状态", "")),
             ))
 

@@ -90,12 +90,12 @@ def _login(context) -> bool:
         page.wait_for_load_state("domcontentloaded")
         page.wait_for_timeout(1000)  # 等待表单渲染
 
-        # 找到登录表单并填写
-        page.fill('input[name="username"]', username)
+        # 找到登录表单并填写（集思录用 user_name 字段）
+        page.fill('input[name="user_name"]', username)
         page.fill('input[name="password"]', password)
 
-        # 提交登录
-        page.click('button[type="submit"]')
+        # 提交登录（登录按钮是 <a class="btn btn-jisilu">）
+        page.click('a.btn.btn-jisilu')
         page.wait_for_load_state("networkidle", timeout=10000)
 
         logged_in = _is_logged_in(context)
@@ -113,65 +113,158 @@ def _login(context) -> bool:
         return False
 
 
+def _fetch_api(suffix: str, headers: dict) -> list[dict]:
+    """通过 JSON API 获取指定市场数据。"""
+    import requests
+    url = f"https://www.jisilu.cn/data/qdii/qdii_list/{suffix}"
+    try:
+        r = requests.get(url, headers=headers, timeout=15)
+        if r.status_code != 200:
+            logger.warning(f"API {suffix} 返回状态码 {r.status_code}")
+            return []
+        data = r.json()
+        if data.get("isError"):
+            logger.warning(f"API {suffix} 错误: {data.get('msg', '')}")
+            return []
+        return data.get("rows", [])
+    except Exception as e:
+        logger.warning(f"API {suffix} 请求失败: {e}")
+        return []
+
+
+def _api_rows_to_df(rows: list, source: str) -> pd.DataFrame:
+    """将 API 行数据转换为 DataFrame。"""
+    records = []
+    for row in rows:
+        cell = row.get("cell", {})
+        premium_str = cell.get("nav_discount_rt", "")
+        # 溢价率可能是 "-" 或空
+        try:
+            premium = float(premium_str)
+        except (TypeError, ValueError):
+            premium = None
+        records.append({
+            "代码": cell.get("fund_id", ""),
+            "名称": cell.get("fund_nm_color", "") or cell.get("fund_nm", ""),
+            "溢价率": premium,
+            "溢价率_str": premium_str,
+            "当前价": cell.get("price", ""),
+            "最新净值": cell.get("fund_nav", ""),
+            "净值日期": cell.get("nav_dt", ""),
+            "T-2净值": cell.get("fund_nav", ""),
+            "T-2净值日期": cell.get("nav_dt", ""),
+            "参考指数": cell.get("index_nm", ""),
+            "参考指数涨跌幅": cell.get("ref_increase_rt", ""),
+            "申购状态": cell.get("apply_status", ""),
+            "赎回状态": cell.get("redeem_status", ""),
+            "管理费": cell.get("m_fee", ""),
+            "托管费": cell.get("mt_fee", ""),
+            "成交额(万)": cell.get("volume", ""),
+            "溢价率_t1": None,  # API 只提供 T-2
+            "来源": source,
+        })
+    return pd.DataFrame(records)
+
+
 def fetch_qdii_data() -> pd.DataFrame:
     """
-    使用 Playwright 抓取 jisilu.cn QDII 基金数据。
-    返回合并后的原始 DataFrame。
-
-    路径由 config.spider.DATA_DIR 控制，格式如 {PROJECT_ROOT}/qdii_tables/
+    通过 JSON API 抓取 jisilu.cn QDII 基金数据。
+    优先使用 API，失败则降级为 Playwright HTML 抓取。
     """
-    # 确保数据目录存在
-    config.spider.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    import requests
 
+    config.spider.DATA_DIR.mkdir(parents=True, exist_ok=True)
     now_str = datetime.now().strftime("%Y%m%d_%H%M%S")
     all_raw = []
 
+    # ── 构建请求头（含 Cookie） ─────────────────────────────────
+    base_headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/120.0.0.0 Safari/537.36"
+        ),
+        "Referer": "https://www.jisilu.cn/data/qdii/",
+    }
+    # 从 Cookie 缓存加载
+    cookie_str = ""
+    if _COOKIE_FILE.exists():
+        try:
+            cookies = pickle.loads(_COOKIE_FILE.read_bytes())
+            cookie_str = "; ".join(f"{c['name']}={c['value']}" for c in cookies)
+        except Exception as e:
+            logger.warning(f"加载 Cookie 失败: {e}")
+
+    if cookie_str:
+        base_headers["Cookie"] = cookie_str
+
+    # ── API 抓取（3个市场标签页） ─────────────────────────────
+    # 对应关系：#qdiie → E(欧美) + C(商品), #qdiia → A(亚洲)
+    api_map = [
+        ("E", "欧美市场"),
+        ("C", "商品市场"),
+        ("A", "亚洲市场"),
+    ]
+
+    api_success = False
+    for suffix, label in api_map:
+        rows = _fetch_api(suffix, base_headers)
+        if rows:
+            df = _api_rows_to_df(rows, label)
+            if not df.empty:
+                all_raw.append(df)
+                logger.info(f"抓取 [{label}] 成功: {len(df)} 条")
+                api_success = True
+        else:
+            logger.warning(f"抓取 [{label}] 返回空数据")
+
+    # ── 降级：Playwright HTML 抓取 ─────────────────────────────
+    if not api_success:
+        logger.warning("API 抓取失败，降级为 Playwright HTML 抓取")
+        _fetch_via_playwright(all_raw, now_str)
+
+    if all_raw:
+        df_raw = pd.concat(all_raw, ignore_index=True)
+        raw_path = config.spider.DATA_DIR / f"qdii_all_raw_{now_str}.csv"
+        df_raw.to_csv(raw_path, index=False, encoding="utf-8-sig")
+        logger.info(f"原始数据已保存: {raw_path}")
+        return df_raw
+    else:
+        logger.error("未抓取到任何数据")
+        return pd.DataFrame()
+
+
+def _fetch_via_playwright(all_raw: list, now_str: str) -> None:
+    """降级方案：通过 Playwright 解析 HTML 获取数据。"""
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(headless=True)
             context = browser.new_context()
             page = context.new_page()
 
-            # 尝试使用缓存 Cookie，未登录则尝试自动登录
-            if not _load_cached_cookies(context) and not _is_logged_in(context):
-                if not _login(context):
-                    logger.warning("未登录状态抓取，部分数据可能需要登录才能查看")
+            _load_cached_cookies(context)
 
             for url, labels in config.spider.JISILU_URLS:
-                page.goto(url, wait_until="networkidle")
+                page.goto(url, wait_until="networkidle", timeout=30000)
                 page.wait_for_selector("table", timeout=15000)
                 html = page.content()
                 soup = BeautifulSoup(html, "html.parser")
                 tables = soup.find_all("table")
 
                 if not tables:
-                    logger.warning(f"{url} 未找到表格，跳过")
                     continue
 
                 for i, label in enumerate(labels):
                     if i >= len(tables):
                         break
-                    df = pd.read_html(io.StringIO(str(tables[i])), header=1)[0]
-                    df.insert(0, "来源", label)
-                    all_raw.append(df)
-                    logger.info(f"抓取 [{label}] 成功: {len(df)} 条")
-
-            # 登录成功则保存 Cookie
-            if _is_logged_in(context):
-                _save_cookies(context)
+                    try:
+                        df = pd.read_html(io.StringIO(str(tables[i])), header=1)[0]
+                        df.insert(0, "来源", label)
+                        all_raw.append(df)
+                        logger.info(f"Playwright 抓取 [{label}]: {len(df)} 条")
+                    except Exception as e:
+                        logger.warning(f"表格解析失败 [{label}]: {e}")
 
             browser.close()
-
-        if all_raw:
-            df_raw = pd.concat(all_raw, ignore_index=True)
-            raw_path = config.spider.DATA_DIR / f"qdii_all_raw_{now_str}.csv"
-            df_raw.to_csv(raw_path, index=False, encoding="utf-8-sig")
-            logger.info(f"原始数据已保存: {raw_path}")
-            return df_raw
-        else:
-            logger.error("未抓取到任何数据")
-            return pd.DataFrame()
-
     except Exception as e:
-        logger.error(f"Playwright 抓取失败: {e}")
-        raise
+        logger.error(f"Playwright 降级抓取失败: {e}")
